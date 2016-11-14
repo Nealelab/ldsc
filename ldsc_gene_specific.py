@@ -361,29 +361,24 @@ def _filter_chisq( args, log, sumstats, N_factor):
 	return sumstats
 #@profile
 def _overlap_output(args, overlap_matrix, M_annot, n_annot, hsqhat, category_names, M_tot,probe):
-                if args.gsannot is not None:
-                        gsannot_list=args.gsannot.split(',')
-                        mgs=len(gsannot_list)
-
-		for i in range(n_annot-mgs):
-			overlap_matrix[i,:] = overlap_matrix[i,:]/M_annot_origin
-                x=np.zeros((n_annot-mgs)*mgs).reshape(mgs,(n_annot-mgs))
-                overlap_matrix=np.vstack((overlap_matrix,x))
-                y=np.zeros((n_annot)*mgs).reshape(n_annot,mgs)
-                overlap_matrix=np.hstack((overlap_matrix,y))
-                for i in range(mgs):
-                        overlap_matrix[n_annot-mgs+i,n_annot-mgs+i]=1
-
+                M_annot=M_annot.astype('float')
+                overlap_matrix=overlap_matrix.astype('float')
+                if args.cis_trans=="cis":
+                        for i in range(n_annot):
+                                overlap_matrix[i,:] = overlap_matrix[i,:]/M_annot
+                                overlap_matrix[i,np.isnan(overlap_matrix[i,])]=0
+                if args.cis_trans=="trans":
+                        for i in range(n_annot):
+                                overlap_matrix[i,:] = overlap_matrix[i,:]/M_annot
 		prop_hsq_overlap = np.dot(overlap_matrix,hsqhat.prop_hsq.T).reshape((1,n_annot))
 		prop_hsq_overlap_var = np.diag(np.dot(np.dot(overlap_matrix,hsqhat.prop_hsq_cov),overlap_matrix.T))
 		prop_hsq_overlap_se = np.sqrt(prop_hsq_overlap_var).reshape((1,n_annot))
 
 		one_d_convert = lambda x : np.array(x)[0]
 		prop_M_overlap = M_annot/M_tot
-		enrichment = prop_hsq_overlap/prop_M_overlap
+                enrichment = prop_hsq_overlap/prop_M_overlap
 		enrichment_se = prop_hsq_overlap_se/prop_M_overlap
 		enrichment_p = stats.chi2.sf(one_d_convert((enrichment-1)/enrichment_se)**2, 1)
-
 		df = pd.DataFrame({
 			'Category':category_names,
 			'Prop._SNPs':one_d_convert(prop_M_overlap),
@@ -403,8 +398,10 @@ def _overlap_output(args, overlap_matrix, M_annot, n_annot, hsqhat, category_nam
 		#df = df[np.logical_not(df['Prop._SNPs'] > .9999)]
 		df.to_csv(args.out_h2+probe+'.results',sep="\t",index=False)
 
-		#ofh=args.out_h2+probe+'.overlap_matrix'
-		#np.savetxt(ofh,overlap_matrix)
+		ofh=args.out_h2+probe+'.overlap_matrix'
+		np.savetxt(ofh,overlap_matrix)
+		ofh2=args.out_h2+probe+'.M_annot'
+		np.savetxt(ofh2,M_annot)
 
 def _print_end_time( args, log):
 	log.log('Analysis finished at {T}'.format(T=time.ctime()) )
@@ -510,25 +507,39 @@ def ldscore(args,chr,b31,b32,b11,b12,annot,probe,array_snps,array_indivs,header=
                 if args.gsannot is not None:
                         gsannot_list=args.gsannot.split(',')
                         mgs=len(gsannot_list)
-		num_annots, ma = len(annot.df.columns) - 4+mgs, len(annot.df)
-	#	log.log("Read {A} annotations for {M} SNPs from {f}".format(f=args.annot,
-	#		A=num_annots, M=ma))
-		annot_matrix = np.array(annot.df.iloc[:,4:])
-                gs_matrix=np.zeros((ma,mgs))
-                annot_matrix=np.hstack((annot_matrix,gs_matrix))
-		annot_colnames = annot.df.columns[4:]
-                M_gsannot=np.zeros(mgs)
-                ####add in 1's to annot_matrix
-                for gsi in range(mgs):
-                        s=np.genfromtxt(gsannot_list[gsi],dtype=None,usecols=[0,1,2,3],names=['chrom','probe','start','end'])
-                        startpos=s[s['probe']==probe][0][2]
-                        endpos=s[s['probe']==probe][0][3]
-                        annot_index=annot.df[(annot.df.BP>startpos) &(annot.df.BP<endpos)].index.tolist()
-                        if len(annot_index)>0:
-                                annot_matrix[annot_index,num_annots-mgs+gsi]=1
-                        newcolname="temp"+str(gsi)
-                        annot_colnames=annot_colnames.insert(len(annot_colnames),newcolname)
-                        M_gsannot[gsi]=len(annot_index)
+                        num_annots, ma = len(annot.df.columns) - 4+mgs, len(annot.df)
+                #	log.log("Read {A} annotations for {M} SNPs from {f}".format(f=args.annot,
+                #		A=num_annots, M=ma))
+                        annot_matrix = np.array(annot.df.iloc[:,4:])
+                        gs_matrix=np.zeros((ma,mgs))
+                        annot_matrix=np.hstack((annot_matrix,gs_matrix))
+                        annot_colnames = annot.df.columns[4:]
+                        M_gsannot=np.zeros(mgs)
+                        ####add in 1's to annot_matrix
+                        for gsi in range(mgs):
+                                s=np.genfromtxt(gsannot_list[gsi],dtype=None,usecols=[0,1,2,3],names=['chrom','probe','start','end'])
+                                startpos=s[s['probe']==probe][0][2]
+                                endpos=s[s['probe']==probe][0][3]
+                                exonstarts=str(startpos).split(",")
+                                exonends=str(endpos).split(",")
+                                annot_index=[]
+                                for exoni in range(len(exonstarts)):
+                                        print exoni
+                                        annot_index.extend(annot.df[(annot.df.BP>float(exonstarts[exoni])) &(annot.df.BP<float(exonends[exoni]))].index.tolist())
+                                #annot_index=annot.df[(annot.df.BP>startpos) &(annot.df.BP<endpos)].index.tolist()
+                                annot_index=list(set(annot_index))
+                                if len(annot_index)>0:
+                                        annot_matrix[annot_index,num_annots-mgs+gsi]=1
+                                newcolname="temp"+str(gsi)
+                                annot_colnames=annot_colnames.insert(len(annot_colnames),newcolname)
+                                M_gsannot[gsi]=len(annot_index)
+
+                else:
+                        M_gsannot=-1
+                        num_annots, ma = len(annot.df.columns) - 4, len(annot.df)
+                        annot_matrix = np.array(annot.df.iloc[:,4:])
+                        annot_colnames = annot.df.columns[4:]
+
 
 		if args.cis_trans == 'cis':
 			keep_snps = range(int(b31)-1,int(b32),1)
@@ -757,6 +768,7 @@ def ldscore(args,chr,b31,b32,b11,b12,annot,probe,array_snps,array_indivs,header=
 	if annot_matrix is not None:
 		annot_keep = geno_array.kept_snps
 		annot_matrix = annot_matrix[annot_keep,:]
+                sum_annot=annot_matrix.sum(axis=0)
 
 	# determine block widths
 	x = np.array((args.ld_wind_snps, args.ld_wind_kb, args.ld_wind_cm), dtype=bool)
@@ -807,70 +819,15 @@ def ldscore(args,chr,b31,b32,b11,b12,annot,probe,array_snps,array_indivs,header=
 			annot_matrix = np.multiply(annot_matrix, mf)
 		else:
 			annot_matrix = mf
-
-# 	if args.se: # block jackknife
-#
-# 		# block size
-# 		if args.block_size:
-# 			jSize = args.block_size
-# 		elif n > 50:
-# 			jSize = 10
-# 		else:
-# 			jSize = 1
-#
-# 		jN = int(np.ceil(n / jSize))
-# 		if args.l1:
-# 			col_prefix = "L1"; file_suffix = "l1.jknife"
-# 			raise NotImplementedError('Sorry, havent implemented L1 block jackknife yet.')
-#
-# 		elif args.l1sq:
-# 			col_prefix = "L1SQ"; file_suffix = "l1sq.jknife"
-# 			raise NotImplementedError('Sorry, havent implemented L1^2 block jackknife yet.')
-#
-# 		elif args.l2:
-# 			col_prefix = "L2"; file_suffix = "l2.jknife"
-# 			c = "Computing LD Score (L2) and block jackknife standard errors with {n} blocks."
-#
-# 		elif args.l4:
-# 			col_prefix = "L4"; file_suffix = "l4.jknife"
-# 			c = "Computing L4 and block jackknife standard errors with {n} blocks."
-#
-# 		print c.format(n=jN)
-# 		(lN_est, lN_se) = geno_array.ldScoreBlockJackknife(block_left, args.chunk_size, jN=jN,
-# 			annot=annot_matrix)
-# 		lN = np.c_[lN_est, lN_se]
-# 		if num_annots == 1:
-# 			ldscore_colnames = [col_prefix+scale_suffix, 'SE('+col_prefix+scale_suffix+')']
-# 		else:
-# 			ldscore_colnames =  [x+col_prefix+scale_suffix for x in annot_colnames]
-# 			ldscore_colnames += ['SE('+x+scale_suffix+')' for x in ldscore_colnames]
-
-# 	else: # not block jackknife
-# 		if args.l1:
-# 			log.log("Estimating L1.")
-# 			lN = geno_array.l1VarBlocks(block_left, args.chunk_size, annot=annot_matrix)
-# 			col_prefix = "L1"; file_suffix = "l1"
-#
-# 		elif args.l1sq:
-# 			log.log("Estimating L1 ^ 2.")
-# 			lN = geno_array.l1sqVarBlocks(block_left, args.chunk_size, annot=annot_matrix)
-# 			col_prefix = "L1SQ"; file_suffix = "l1sq"
-#
-# 		elif args.l2:
-# 			log.log("Estimating LD Score (L2).")
-# 			lN = geno_array.ldScoreVarBlocks(block_left, args.chunk_size, annot=annot_matrix)
-# 			col_prefix = "L2"; file_suffix = "l2"
-#
-# 		elif args.l4:
-# 			col_prefix = "L4"; file_suffix = "l4"
-# 			raise NotImplementedError('Sorry, havent implemented L4 yet. Try the jackknife.')
-# 			lN = geno_array.l4VarBlocks(block_left, c, annot)
-        for gsi in range(mgs):
-                temp="temp"+str(gsi)
-                origin_ld[temp]=0
+        if(args.gsannot is not None):
+                for gsi in range(mgs):
+                        temp="temp"+str(gsi)
+                        origin_ld[temp]=0
 
 	log.log("Estimating LD Score.")
 	lN = geno_array.ldScoreVarBlocks(block_left, args.chunk_size, annot=annot_matrix)
+        overlap_matrix=np.dot(annot_matrix.T,annot_matrix)
+        M_tot=annot_matrix.shape[0]
 	#log.log("lN deminsions are {dim1} and {dim2} ".format(dim1=lN.shape[0],dim2=lN.shape[1]))
 	#test=origin_ld.iloc[range(int(b31)-1,int(b32),1),:]
 	#log.log("test dimision are {dim1} and {dim2} ".format(dim1=test.shape[0],dim2=test.shape[1]))
@@ -997,7 +954,8 @@ def ldscore(args,chr,b31,b32,b11,b12,annot,probe,array_snps,array_indivs,header=
 		#log.log('\nSummary of Annotation Matrix Row Sums')
 	#	row_sums = x.sum(axis=1).describe()
 		#log.log(_remove_dtype(row_sums))
-	return (df,M_gsannot)
+        #sum_annot##gene specific M for baseline annotations and baseline annotations
+	return (df,sum_annot,M_gsannot,overlap_matrix,M_tot)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
@@ -1241,7 +1199,7 @@ if __name__ == '__main__':
 	parser.add_argument('--frqfile', type=str,
 		help='For use with --overlap-annot. Provides allele frequencies to prune to common '
 		'snps if --not-M-5-50 is not set.')
-	parser.add_argument('--gsannot', default=False, type=str,
+	parser.add_argument('--gsannot', default=None, type=str,
 		help='Specify gene specific annotations, multiple files separated by comma')
 
 	args = parser.parse_args()
@@ -1291,8 +1249,6 @@ if __name__ == '__main__':
 
 
 	##read in annot file
-        if args.overlap_annot:
-               [overlap_matrix, M_tot] = _read_annot(args,log)
 
 	M_annot_origin = ps.M(args.ref_ld_chr, 22, common=True)
 
@@ -1309,9 +1265,10 @@ if __name__ == '__main__':
 
 		ref_ldscores_origin = ref_ldscores_origin.drop_duplicates(subset='SNP')
         	ref_ldscores_origin = ref_ldscores_origin[ref_ldscores_origin.SNP != '.']
-                for gsi in range(mgs):
-                        temp="temp"+str(gsi)
-                        ref_ldscores_origin[temp]=0
+                if(args.gsannot is not None):
+                        for gsi in range(mgs):
+                                temp="temp"+str(gsi)
+                                ref_ldscores_origin[temp]=0
 
 	if args.no_check_alleles:
 		args.no_check = False
@@ -1396,19 +1353,22 @@ if __name__ == '__main__':
 
 			#new_ldscore_chr store the new calculated LD of chr args.chr
 
-			new_ldscore_chr,M_gsannot=ldscore(args,chr,b31,b32,b11,b12,annot,probe,array_snps,array_indivs,header)
-
+			new_ldscore_chr,M_annot,M_gsannot,overlap_matrix,M_tot=ldscore(args,chr,b31,b32,b11,b12,annot,probe,array_snps,array_indivs,header)
+                        if(args.cis_trans == "trans" and args.overlap_annot):
+                                M_annot=M_annot_origin
+                                [overlap_matrix, M_tot] = _read_annot(args,log)
 			new_ldscore_chr=new_ldscore_chr.drop(['CM','MAF'],axis=1)
 			if args.chr != 1:
 				ref_ldscores=pd.concat([ref_ldscores_origin,new_ldscore_chr])
 			else:
 				ref_ldscores=new_ldscore_chr
 			if args.chr != 22:
-				chr_ld = [ps.l2_parser(fh + str(i) + suffix, compression) for i in xrange(args.chr,23)]
+				chr_ld = [ps.l2_parser(fh + str(i) + suffix, compression) for i in xrange(args.chr+1,23)]
 				restscore=pd.concat(chr_ld)
-                                for gsi in range(mgs):
-                                        temp="temp"+str(gsi)
-                                        restscore[temp]=0
+                                if(args.gsannot is not None):
+                                        for gsi in range(mgs):
+                                                temp="temp"+str(gsi)
+                                                restscore[temp]=0
 				ref_ldscores = pd.concat([ref_ldscores,restscore])
 
 			ref_ldscores=ref_ldscores.drop(['CHR','BP'],axis=1)
@@ -1428,9 +1388,9 @@ if __name__ == '__main__':
 			#ref_ldscores = _read_ref_ld(args)
 			#sumstats.H2(args, header)
 			#M_annot = ps.M(args.ref_ld_chr, 22, common=True)
-			M_annot, ref_ldscores = _keep_ld(args,  M_annot_origin, ref_ldscores)
-                        if(args.gsannot is not None):
-                                M_annot=np.append(M_annot_origin,M_gsannot)
+			M_annot, ref_ldscores = _keep_ld(args,  M_annot, ref_ldscores)
+                        #if(args.gsannot is not None):
+                        #        M_annot=np.append(M_annot,M_gsannot)
 			#M_annot, ref_ldscores = _check_variance( M_annot, ref_ldscores)
 			#w_ldscores = _read_w_ld(args)
 			w_ld_colname, ref_ld_colnames, sumstats =\
