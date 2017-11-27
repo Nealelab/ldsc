@@ -79,7 +79,7 @@ def smart_merge(x, y):
 def _read_ref_ld(args, log):
     '''Read reference LD Scores.'''
     ref_ld = _read_chr_split_files(args.ref_ld_chr, args.ref_ld, log,
-                                   'reference panel LD Score', ps.ldscore_fromlist)
+                                   'reference panel LD Score', ps.ldscore_fromlist,args)
     log.log(
         'Read reference panel LD Scores for {N} SNPs.'.format(N=len(ref_ld)))
     return ref_ld
@@ -90,10 +90,10 @@ def _read_annot(args, log):
     try:
         if args.ref_ld is not None:
             overlap_matrix, M_tot = _read_chr_split_files(args.ref_ld_chr, args.ref_ld, log,
-                                                          'annot matrix', ps.annot, frqfile=args.frqfile)
+                                                          'annot matrix', ps.annot,args, frqfile=args.frqfile)
         elif args.ref_ld_chr is not None:
             overlap_matrix, M_tot = _read_chr_split_files(args.ref_ld_chr, args.ref_ld, log,
-                                                      'annot matrix', ps.annot, frqfile=args.frqfile_chr)
+                                                      'annot matrix', ps.annot,args, frqfile=args.frqfile_chr)
     except Exception:
         log.log('Error parsing .annot file.')
         raise
@@ -131,7 +131,7 @@ def _read_w_ld(args, log):
         raise ValueError(
             '--w-ld must point to a single fileset (no commas allowed).')
     w_ld = _read_chr_split_files(args.w_ld_chr, args.w_ld, log,
-                                 'regression weight LD Score', ps.ldscore_fromlist)
+                                 'regression weight LD Score', ps.ldscore_fromlist,args)
     if len(w_ld.columns) != 2:
         raise ValueError('--w-ld may only have one LD Score column.')
     w_ld.columns = ['SNP', 'LD_weights']  # prevent colname conflicts w/ ref ld
@@ -140,8 +140,9 @@ def _read_w_ld(args, log):
     return w_ld
 
 
-def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc, **kwargs):
+def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc,args, **kwargs):
     '''Read files split across 22 chromosomes (annot, ref_ld, w_ld).'''
+    #import pdb; pdb.set_trace()
     try:
         if not_chr_arg:
             log.log('Reading {N} from {F} ...'.format(F=not_chr_arg, N=noun))
@@ -149,7 +150,7 @@ def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc, **kwargs):
         elif chr_arg:
             f = ps.sub_chr(chr_arg, '[1-22]')
             log.log('Reading {N} from {F} ...'.format(F=f, N=noun))
-            out = parsefunc(_splitp(chr_arg), _N_CHR, **kwargs)
+            out = parsefunc(_splitp(chr_arg),args, _N_CHR, **kwargs)
     except ValueError as e:
         log.log('Error parsing {N}.'.format(N=noun))
         raise e
@@ -285,7 +286,7 @@ def cell_type_specific(args, log):
     results_data = []
     for (name, ct_ld_chr) in [x.split() for x in open(args.ref_ld_chr_cts).readlines()]:
         ref_ld_cts_allsnps = _read_chr_split_files(ct_ld_chr, None, log,
-                                   'cts reference panel LD Score', ps.ldscore_fromlist)
+                                   'cts reference panel LD Score', ps.ldscore_fromlist,args)
         log.log('Performing regression.')
         ref_ld_cts = np.array(pd.merge(keep_snps, ref_ld_cts_allsnps, on='SNP', how='left').ix[:,1:])
         if np.any(np.isnan(ref_ld_cts)):

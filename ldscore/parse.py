@@ -8,6 +8,8 @@ This module contains functions for parsing various ldsc-defined file formats.
 from __future__ import division
 import numpy as np
 import pandas as pd
+import re
+from pybedtools import BedTool
 import os
 
 
@@ -86,11 +88,11 @@ def sumstats(fh, alleles=False, dropna=True):
     return x
 
 
-def ldscore_fromlist(flist, num=None):
+def ldscore_fromlist(flist,args,num=None):
     '''Sideways concatenation of a list of LD Score files.'''
     ldscore_array = []
     for i, fh in enumerate(flist):
-        y = ldscore(fh, num)
+        y = ldscore(fh,args,num)
         if i > 0:
             if not series_eq(y.SNP, ldscore_array[0].SNP):
                 raise ValueError('LD Scores for concatenation must have identical SNP columns.')
@@ -129,7 +131,31 @@ def frq_parser(fh, compression):
     return df[['SNP', 'FRQ']]
 
 
-def ldscore(fh, num=None):
+def exclude_file(fh,args):
+    with open(args.exclude_file,'r') as f:
+         for line in f.readlines():
+	     split = line.strip().split('\t')
+             chrom = int(split[0].lstrip('chr'))
+	     start = int(split[1])
+	     end = int(split[2])
+	     fh = fh[~((fh.CHR == chrom) & ((start<=fh.BP) & (fh.BP<=end)))] 
+    return fh
+
+
+def exclude_chr_bp(fh,args):
+    string = args.exclude_chr_bp
+    split = re.split(':|-',string) 
+    if len(split) > 1:
+        chrom = int(split[0])
+        start = int(split[1])
+        end = int(split[2])
+        new = fh[~((fh.CHR == chrom) & ((start<=fh.BP) & (fh.BP<=end)))] 
+    else:
+        chrom = int(split[0])
+	new = fh[fh.CHR != chrom]
+    return new
+
+def ldscore(fh,args, num=None):
     '''Parse .l2.ldscore files, split across num chromosomes. See docs/file_formats_ld.txt.'''
     suffix = '.l2.ldscore'
     if num is not None:  # num files, e.g., one per chromosome
@@ -142,6 +168,10 @@ def ldscore(fh, num=None):
         x = l2_parser(fh + suffix + s, compression)
 
     x = x.sort_values(by=['CHR', 'BP']) # SEs will be wrong unless sorted
+    if args.exclude_file is not None:
+        x = exclude_file(x,args)
+    if args.exclude_chr_bp is not None:
+        x = exclude_chr_bp(x,args)
     x = x.drop(['CHR', 'BP'], axis=1).drop_duplicates(subset='SNP')
     return x
 
