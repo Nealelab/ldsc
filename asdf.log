@@ -1,0 +1,34 @@
+Inferred that N_cas = 1234.0, N_con = 5468.0 from the FRQ_[A/U] columns.
+Interpreting column names as follows:
+INFO:	INFO score (imputation quality; higher --> better imputation)
+A1:	Allele 1, interpreted as ref allele for signed sumstat.
+P:	p-Value
+A2:	Allele 2, interpreted as non-ref allele for signed sumstat.
+SNP:	Variant ID (e.g., rs number)
+FRQ_U_5468:	Allele frequency
+OR:	Odds ratio (1 --> no effect; above 1 --> A1 is risk increasing)
+
+Reading list of SNPs for allele merge from test/munge_test/merge_alleles
+Read 4 SNPs for allele merge.
+Reading sumstats from test/munge_test/sumstats into memory 5000000 SNPs at a time.
+Read 9 SNPs from --sumstats file.
+Removed 5 SNPs not in --merge-alleles.
+Removed 0 SNPs with missing values.
+Removed 3 SNPs with INFO <= 0.9.
+Removed 0 SNPs with MAF <= 0.01.
+Removed 0 SNPs with out-of-bounds p-values.
+Removed 0 variants that were not SNPs or were strand-ambiguous.
+1 SNPs remain.
+Removed 0 SNPs with duplicated rs numbers (1 SNPs remain).
+Median value of OR was 1.01359, which seems sensible.
+Removed 0 SNPs whose alleles did not match --merge-alleles (1 SNPs remain).
+Writing summary statistics for 4 SNPs (1 with nonmissing beta) to asdf.sumstats.gz.
+
+Metadata:
+Mean chi^2 = 1.543
+Lambda GC = 3.393
+Max chi^2 = 1.543
+0 Genome-wide significant SNPs (some may have been removed by filtering).
+
+Conversion finished at Mon Nov 20 15:10:03 2017
+Total time elapsed: 0.25s

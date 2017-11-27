@@ -577,6 +577,11 @@ parser.add_argument('--samp-prev',default=None,
     help='Sample prevalence of binary phenotype (for conversion to liability scale).')
 parser.add_argument('--pop-prev',default=None,
     help='Population prevalence of binary phenotype (for conversion to liability scale).')
+# Add utility to leave out sets of snps, portion of genome
+parser.add_argument('--exclude-file',default=None,type=str,
+    help='File of SNPs to exclude from regression analyses')
+parser.add_argument('--exclude-chr-bp',default=None,type=str,
+    help='chr:start-end values of SNPs to exclude, can be just chromosome')
 
 if __name__ == '__main__':
 
