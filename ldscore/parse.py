@@ -11,7 +11,7 @@ import pandas as pd
 import re
 from pybedtools import BedTool
 import os
-
+import h5py
 
 def series_eq(x, y):
     '''Compare series, return False if lengths not equal.'''
@@ -41,6 +41,9 @@ def which_compression(fh):
     elif os.access(fh, 4):
         suffix = ''
         compression = None
+    elif os.access(fh+'.h5', 4):
+        suffix = '.h5'
+	compression = None
     else:
         raise IOError('Could not open {F}[./gz/bz2]'.format(F=fh))
 
@@ -105,7 +108,46 @@ def ldscore_fromlist(flist,args,num=None):
 
     return pd.concat(ldscore_array, axis=1)
 
+def ldscore_fromfile(flist,args,num=None):
+    fileread = flist[0]
+    filecols = flist[1:]
+    #I want to do this better so that I dont need to use indices as much
+    filecols = filecols[0].split(',')
+    y = ldscore_file(fileread,args,num,filecols)
+    return y
 
+def l2_parser_big(fh, compression,cols):
+    '''Parse Full LD Score file for large cell type analyses'''
+    usecols = ['CHR','SNP','BP']
+    usecols+=cols
+    try:
+        x = read_csv(fh,header=0,compression=compression,usecols=usecols)
+    except:
+        x = pd.read_hdf(fh,'dataset')
+    if 'MAF' in x.columns and 'CM' in x.columns:
+        x = x.drop(['MAF','CM'],axis=1)
+    return x    
+    
+def ldscore_file(fh,args,num,cols):
+    '''Parse .l2.ldscore files, split across num chromosomes. See docs/file_formats_ld.txt.'''
+    suffix = '.l2.ldscore'
+    if num is not None:  # num files, e.g., one per chromosome
+        first_fh = sub_chr(fh, 1) + suffix
+        s, compression = which_compression(first_fh)
+        chr_ld = [l2_parser_big(sub_chr(fh, i) + suffix + s, compression,cols) for i in xrange(1, num + 1)]
+        x = pd.concat(chr_ld)  # automatically sorted by chromosome
+    else:  # just one file
+        s, compression = which_compression(fh + suffix)
+        x = l2_parser_big(fh + suffix + s, compression,cols)
+
+    x = x.sort_values(by=['CHR', 'BP']) # SEs will be wrong unless sorted
+    if args.exclude_file is not None:
+        x = exclude_file(x,args)
+    if args.exclude_chr_bp is not None:
+        x = exclude_chr_bp(x,args)
+    x = x.drop(['CHR', 'BP'], axis=1).drop_duplicates(subset='SNP')
+    return x
+    
 def l2_parser(fh, compression):
     '''Parse LD Score files'''
     x = read_csv(fh, header=0, compression=compression)
@@ -134,8 +176,8 @@ def frq_parser(fh, compression):
 def exclude_file(fh,args):
     with open(args.exclude_file,'r') as f:
          for line in f.readlines():
-	     split = line.strip().split('\t')
-             chrom = int(split[0].lstrip('chr'))
+             split = line.replace('\n','').split()
+	     chrom = int(split[0].lstrip('chr'))
 	     start = int(split[1])
 	     end = int(split[2])
 	     fh = fh[~((fh.CHR == chrom) & ((start<=fh.BP) & (fh.BP<=end)))] 
@@ -190,13 +232,47 @@ def M(fh, num=None, N=2, common=False):
 
     return np.array(x).reshape((1, len(x)))
 
+def M_parser_big(fh,cols,suffix,N=2):
+    try:
+        x = pd.read_csv(fh,usecols=cols,delim_whitespace=True)
+    except:
+	x = pd.read_hdf(fh,'dataset')
+	x = x[cols]
+    return x
+
+def M_ff(fh,num=None,N=2,common=False):
+    '''Parses .l{N}.M files, split across num chromosomes. See docs/file_formats_ld.txt.'''
+    fileread = fh[0]
+    filecols = fh[1:]
+    filecols = filecols[0].split(',')
+    suffix = '.l' + str(N) + '.M'
+    if common:
+        suffix += '_5_50'
+
+    if num is not None:
+	x = M_parser_big(sub_chr(fileread, 1) + suffix,filecols,suffix,N)
+	for i in xrange(2,num + 1):
+	    x = x.add(M_parser_big(sub_chr(fileread, i) + suffix,filecols,suffix,N))
+    else:
+        #Need to test this 
+	try:
+	    y = pd.read_csv(fileread + suffix,usecols=filecols,delim_whitespace=True)
+            x = y.sum(axis=1)
+        except:
+	    y = pd.read_hdf(fileread + suffix,'dataset')
+	    x = y.sum(axis=1)
+
+    return np.array(x).reshape((x.shape[0],x.shape[1]))
 
 def M_fromlist(flist, num=None, N=2, common=False):
     '''Read a list of .M* files and concatenate sideways.'''
     return np.hstack([M(fh, num, N, common) for fh in flist])
 
+def M_fromfile(flist,num=None,N=2,common=False):
+    '''Read the condensed M files by chromosome.'''
+    return M_ff(flist, num, N, common)
 
-def annot(fh_list, num=None, frqfile=None):
+def annot(fh_list,args, num=None, frqfile=None):
     '''
     Parses .annot files and returns an overlap matrix. See docs/file_formats_ld.txt.
     If num is not None, parses .annot files split across [num] chromosomes (e.g., the

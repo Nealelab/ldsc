@@ -1,5 +1,5 @@
 from __future__ import division
-from ldscore import parse_new as ps
+from ldscore import parse as ps
 import unittest
 import numpy as np
 import pandas as pd
@@ -8,6 +8,7 @@ import os
 from nose.tools import *
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 from ldsc import parser
+
 DIR = os.path.dirname(__file__)
 
 
@@ -115,8 +116,6 @@ def test_exclude_file():
     args.exclude_file = os.path.join(DIR, 'parse_test/parse_exclude.bed')
     fh = ps.read_csv(os.path.join(DIR,'parse_test/test_exclude.l2.ldscore.gz'))
     x = ps.exclude_file(fh,args)
-    #x = ps.exclude_file(os.path.join(DIR,'parse_test/test_exclude.l2.ldscore.gz'),args)
-    #x = ps.exclude_file(os.path.join(DIR,'parse_test/test_exclude.l2.ldscore.gz'),args=os.path.join(DIR,'parse_test/parse_exclude.bed'))
     assert_array_equal(x.columns,['CHR','SNP','BP','baseL2','UTR_3_UCSC'])
     assert_array_equal(x.CHR, [2,3,5,8,11])
     assert_equal(list(x['SNP']), ['rs3','rs4','rs5','rs6','rs8'])
@@ -126,9 +125,10 @@ def test_exclude_file():
 
 
 class Test_ldscore(unittest.TestCase):
-
+    
     def test_ldscore(self):
-        args = parser.parse_args('')
+	args = parser.parse_args('')
+	args.exclude_file = None
 	x = ps.ldscore(os.path.join(DIR, 'parse_test/test'),args)
         assert_equal(list(x['SNP']), ['rs' + str(i) for i in range(1, 23)])
         assert_equal(list(x['AL2']), range(1, 23))
@@ -143,14 +143,20 @@ class Test_ldscore(unittest.TestCase):
 
     def test_ldscore_fromlist(self):
         args = parser.parse_args('')
-        fh = os.path.join(DIR, 'parse_test/test')
-        x = ps.ldscore_fromlist([fh, fh],args)
+	fh = os.path.join(DIR, 'parse_test/test')
+        x = ps.ldscore_fromlist([fh, fh],args,num=None)
         assert_array_equal(x.shape, (22, 5))
         y = ps.ldscore(os.path.join(DIR, 'parse_test/test'),args)
         assert_array_equal(x.ix[:, 0:3], y)
         assert_array_equal(x.ix[:, [0, 3, 4]], y)
         assert_raises(
             ValueError, ps.ldscore_fromlist, [fh, os.path.join(DIR, 'parse_test/test2')],args)
+    
+    def test_ldscore_fromfile(self):
+        args = parser.parse_args('')
+	flist = [os.path.join(DIR, 'parse_test/test3.big_ldcts.'),'A,control']
+	x = ps.ldscore_fromfile(flist, args, num=2) #maybe this should be 2?
+        assert_array_equal(x.shape , (6,3))
 
 
 class Test_M(unittest.TestCase):
@@ -175,6 +181,12 @@ class Test_M(unittest.TestCase):
         assert_array_equal(x.shape, (1, 6))
         assert_array_equal(x, np.hstack((ps.M(fh), ps.M(fh))))
 
+    def test_M_fromfile(self):
+        #reading A, control columns for first two chromosomes
+	flist = [os.path.join(DIR, 'parse_test/test3.big_ldcts.'),'A,control']
+	x = ps.M_fromfile(flist,num=2)
+        assert_array_equal(x.shape,(1,2))
+	assert_array_equal(x , [[2, 6]]) 
 
 class Test_Fam(unittest.TestCase):
 

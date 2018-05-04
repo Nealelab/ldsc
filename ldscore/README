@@ -1,0 +1,3 @@
+For new file format, the column headers are the geneset names. Need CHR SNP BP. Need 22 of the files.
+Format of big_ldcts: ANALYSIS_NAME.genesetA /path/to/big_ld_file.:genesetA,control_column
+hdf5: all of the keys are "dataset"

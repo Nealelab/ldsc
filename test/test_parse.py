@@ -7,10 +7,25 @@ import nose
 import os
 from nose.tools import *
 from numpy.testing import assert_array_equal, assert_array_almost_equal
+from ldsc import parser
 
 DIR = os.path.dirname(__file__)
 
+class Mock(object):
+    '''
+    Dumb object for mocking args and log
+    '''
 
+    def __init__(self):
+        pass
+
+    def log(self, x):
+        # pass
+        print x
+
+log = Mock()
+args = Mock()
+args.exclude_file=None
 def test_series_eq():
     x = pd.Series([1, 2, 3])
     y = pd.Series([1, 2])
@@ -55,28 +70,39 @@ def test_frq_parser():
 
 
 class Test_ldscore(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        args = parser.parse_args('')
+        args.ref_ld = DIR + '/simulate_test/ldscore/twold_onefile'
+        args.w_ld = DIR + '/simulate_test/ldscore/w'
+        args.chisq_max = 99999
+        args.exclude_file = None
 
     def test_ldscore(self):
-        x = ps.ldscore(os.path.join(DIR, 'parse_test/test'))
+        args = parser.parse_args('')
+	args.exclude_file = None
+	x = ps.ldscore(os.path.join(DIR, 'parse_test/test'),args)
         assert_equal(list(x['SNP']), ['rs' + str(i) for i in range(1, 23)])
         assert_equal(list(x['AL2']), range(1, 23))
         assert_equal(list(x['BL2']), range(2, 46, 2))
 
     def test_ldscore_loop(self):
-        x = ps.ldscore(os.path.join(DIR, 'parse_test/test'), 2)
+        args = parser.parse_args('')
+	x = ps.ldscore(os.path.join(DIR, 'parse_test/test'),args, 2)
         assert_equal(list(x['SNP']), ['rs' + str(i) for i in range(1, 3)])
         assert_equal(list(x['AL2']), range(1, 3))
         assert_equal(list(x['BL2']), range(2, 6, 2))
 
     def test_ldscore_fromlist(self):
-        fh = os.path.join(DIR, 'parse_test/test')
-        x = ps.ldscore_fromlist([fh, fh])
+        args = parser.parse_args('')
+	fh = os.path.join(DIR, 'parse_test/test')
+        x = ps.ldscore_fromlist([fh, fh],args)
         assert_array_equal(x.shape, (22, 5))
-        y = ps.ldscore(os.path.join(DIR, 'parse_test/test'))
+        y = ps.ldscore(os.path.join(DIR, 'parse_test/test'),args)
         assert_array_equal(x.ix[:, 0:3], y)
         assert_array_equal(x.ix[:, [0, 3, 4]], y)
         assert_raises(
-            ValueError, ps.ldscore_fromlist, [fh, os.path.join(DIR, 'parse_test/test2')])
+            ValueError, ps.ldscore_fromlist, [fh, os.path.join(DIR, 'parse_test/test2')],args)
 
 
 class Test_M(unittest.TestCase):

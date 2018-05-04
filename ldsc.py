@@ -165,65 +165,74 @@ def ldscore(args, log):
         annot_matrix, annot_colnames, n_annot = None, None, 1
 
 
-    elif args.cts_bin is not None and args.cts_breaks is not None:  # --cts-bin
-        cts_fnames = sumstats._splitp(args.cts_bin)  # read filenames
-        args.cts_breaks = args.cts_breaks.replace('N','-')  # replace N with negative sign
-        try:  # split on x
-            breaks = [[float(x) for x in y.split(',')] for y in args.cts_breaks.split('x')]
-        except ValueError as e:
-            raise ValueError('--cts-breaks must be a comma-separated list of numbers: '
+    elif (args.cont_bin is not None and (args.cont_breaks is not None or args.cont_quantiles is not None)):  # --cts-bin
+        cts_fnames = sumstats._splitp(args.cont_bin)  # read filenames
+        if args.cont_breaks:
+	    args.cont_breaks = args.cont_breaks.replace('N','-')  # replace N with negative sign
+	try:  # split on x
+            if args.cont_breaks is not None:
+	        breaks = [[float(x) for x in y.split(',')] for y in args.cont_breaks.split('x')]
+            else:
+	        breaks=[]
+	except ValueError as e:
+            raise ValueError('--cont-breaks must be a comma-separated list of numbers: '
                 +str(e.args))
+        if args.cont_breaks:
+            if len(breaks) != len(cts_fnames):
+                raise ValueError('Need to specify one set of breaks for each file in --cont-bin.')
 
-        if len(breaks) != len(cts_fnames):
-            raise ValueError('Need to specify one set of breaks for each file in --cts-bin.')
-
-        if args.cts_names:
-            cts_colnames = [str(x) for x in args.cts_names.split(',')]
+        if args.cont_names:
+            cts_colnames = [str(x) for x in args.cont_names.split(',')]
             if len(cts_colnames) != len(cts_fnames):
-                msg = 'Must specify either no --cts-names or one value for each file in --cts-bin.'
+                msg = 'Must specify either no --cont-names or one value for each file in --cont-bin.'
                 raise ValueError(msg)
 
         else:
             cts_colnames = ['ANNOT'+str(i) for i in xrange(len(cts_fnames))]
 
-        log.log('Reading numbers with which to bin SNPs from {F}'.format(F=args.cts_bin))
+        log.log('Reading numbers with which to bin SNPs from {F}'.format(F=args.cont_bin))
 
         cts_levs = []
         full_labs = []
         for i,fh in enumerate(cts_fnames):
             vec = ps.read_cts(cts_fnames[i], array_snps.df.SNP.values)
+            if args.cont_breaks: 
+                max_cts = np.max(vec)
+                min_cts = np.min(vec)
+                cut_breaks = list(breaks[i])
+                name_breaks = list(cut_breaks)
+                if np.all(cut_breaks >= max_cts) or np.all(cut_breaks <= min_cts):
+                    raise ValueError('All breaks lie outside the range of the cts variable.')
 
-            max_cts = np.max(vec)
-            min_cts = np.min(vec)
-            cut_breaks = list(breaks[i])
-            name_breaks = list(cut_breaks)
-            if np.all(cut_breaks >= max_cts) or np.all(cut_breaks <= min_cts):
-                raise ValueError('All breaks lie outside the range of the cts variable.')
+                if np.all(cut_breaks <= max_cts):
+                    name_breaks.append(max_cts)
+                    cut_breaks.append(max_cts+1)
 
-            if np.all(cut_breaks <= max_cts):
-                name_breaks.append(max_cts)
-                cut_breaks.append(max_cts+1)
+                if np.all(cut_breaks >= min_cts):
+                    name_breaks.append(min_cts)
+                    cut_breaks.append(min_cts-1)
 
-            if np.all(cut_breaks >= min_cts):
-                name_breaks.append(min_cts)
-                cut_breaks.append(min_cts-1)
-
-            name_breaks.sort()
-            cut_breaks.sort()
-            n_breaks = len(cut_breaks)
+                name_breaks.sort()
+                cut_breaks.sort()
+                n_breaks = len(cut_breaks)
             # so that col names are consistent across chromosomes with different max vals
-            name_breaks[0] = 'min'
-            name_breaks[-1] = 'max'
-            name_breaks = [str(x) for x in name_breaks]
-            labs = [name_breaks[i]+'_'+name_breaks[i+1] for i in xrange(n_breaks-1)]
-            cut_vec = pd.Series(pd.cut(vec, bins=cut_breaks, labels=labs))
-            cts_levs.append(cut_vec)
+                name_breaks[0] = 'min'
+                name_breaks[-1] = 'max'
+                name_breaks = [str(x) for x in name_breaks]
+                labs = [name_breaks[i]+'_'+name_breaks[i+1] for i in xrange(n_breaks-1)]
+            if args.cont_breaks:
+	        cut_vec = pd.Series(pd.cut(vec, bins=cut_breaks, labels=labs))
+            else:
+		name_breaks = np.arange(args.cont_quantiles)
+		labs = ['q'+str((x+1)) for x in name_breaks]
+		#ranked = pd.DataFrame(vec,columns=['order']).rank(method='first')
+		cut_vec = pd.Series(pd.qcut(vec,int(args.cont_quantiles),labels=labs, precision=5))
+	    cts_levs.append(cut_vec)
             full_labs.append(labs)
-
         annot_matrix = pd.concat(cts_levs, axis=1)
         annot_matrix.columns = cts_colnames
         # crosstab -- for now we keep empty columns
-        annot_matrix = pd.crosstab(annot_matrix.index,
+	annot_matrix = pd.crosstab(annot_matrix.index,
             [annot_matrix[i] for i in annot_matrix.columns], dropna=False,
             colnames=annot_matrix.columns)
 
@@ -237,8 +246,11 @@ def ldscore(args, log):
                 if x not in annot_matrix.columns:
                     annot_matrix[x] = 0
 
-        annot_matrix = annot_matrix[sorted(annot_matrix.columns, key=annot_sort_key)]
-        if len(cts_colnames) > 1:
+        if args.cont_breaks:
+	    annot_matrix = annot_matrix[sorted(annot_matrix.columns, key=annot_sort_key)]
+        elif args.cont_quantiles:
+	    annot_matrix = annot_matrix[sorted(annot_matrix.columns)]
+	if len(cts_colnames) > 1:
             # flatten multi-index
             annot_colnames = ['_'.join([cts_colnames[i]+'_'+b for i,b in enumerate(c)])
                 for c in annot_matrix.columns]
@@ -250,7 +262,7 @@ def ldscore(args, log):
         n_annot = len(annot_colnames)
         if np.any(np.sum(annot_matrix, axis=1) == 0):
             # This exception should never be raised. For debugging only.
-            raise ValueError('Some SNPs have no annotation in --cts-bin. This is a bug!')
+            raise ValueError('Some SNPs have no annotation in --cont-bin. This is a bug!')
 
     else:
         annot_matrix, annot_colnames, keep_snps = None, None, None,
@@ -348,8 +360,12 @@ def ldscore(args, log):
 
     l2_suffix = '.gz'
     log.log("Writing LD Scores for {N} SNPs to {f}.gz".format(f=out_fname, N=len(df)))
-    df.drop(['CM','MAF'], axis=1).to_csv(out_fname, sep="\t", header=True, index=False,
-        float_format='%.3f')
+    if args.thin_ldscore:
+        df.drop(['CM','MAF','CHR','BP','SNP'], axis=1).to_csv(out_fname, sep="\t", header=True, index=False,
+	        float_format='%.3f')
+    else:
+        df.drop(['CM','MAF'], axis=1).to_csv(out_fname, sep="\t", header=True, index=False,
+                float_format='%.3f')
     call(['gzip', '-f', out_fname])
     if annot_matrix is not None:
         M = np.atleast_1d(np.squeeze(np.asarray(np.sum(annot_matrix, axis=0))))
@@ -370,13 +386,13 @@ def ldscore(args, log):
     fout_M_5_50.close()
 
     # print annot matrix
-    if (args.cts_bin is not None) and not args.no_print_annot:
+    if (args.cont_bin is not None) and not args.no_print_annot:
         out_fname_annot = args.out + '.annot'
         new_colnames = geno_array.colnames + ldscore_colnames
         annot_df = pd.DataFrame(np.c_[geno_array.df, annot_matrix])
         annot_df.columns = new_colnames
         del annot_df['MAF']
-        log.log("Writing annot matrix produced by --cts-bin to {F}".format(F=out_fname+'.gz'))
+        log.log("Writing annot matrix produced by --cont-bin to {F}".format(F=out_fname+'.gz'))
         annot_df.to_csv(out_fname_annot, sep="\t", header=True, index=False)
         call(['gzip', '-f', out_fname_annot])
 
@@ -456,23 +472,29 @@ parser.add_argument('--annot', default=None, type=str,
     'See docs/file_formats_ld for a definition of the .annot format.')
 parser.add_argument('--thin-annot', action='store_true', default=False,
     help='This flag says your annot files have only annotations, with no SNP, CM, CHR, BP columns.')
-parser.add_argument('--cts-bin', default=None, type=str,
+parser.add_argument('--thin-ldscore', action='store_true', default=False,
+    help='This flag says your ldscore files have only ldscores, with no SNP, CHR, BP columns.')
+parser.add_argument('--cont-bin', default=None, type=str,
     help='This flag tells LDSC to compute partitioned LD Scores, where the partition '
     'is defined by cutting one or several continuous variable[s] into bins. '
     'The argument to this flag should be the name of a single file or a comma-separated '
     'list of files. The file format is two columns, with SNP IDs in the first column '
     'and the continuous variable in the second column. ')
-parser.add_argument('--cts-breaks', default=None, type=str,
-    help='Use this flag to specify names for the continuous variables cut into bins '
-    'with --cts-bin. For each continuous variable, specify breaks as a comma-separated '
+parser.add_argument('--cont-breaks', default=None, type=str,
+    help='Use this flag to specify where to break the continuous variable into bins '
+    'with --cont-bin. For each continuous variable, specify breaks as a comma-separated '
     'list of breakpoints, and separate the breakpoints for each variable with an x. '
     'For example, if binning on MAF and distance to gene (in kb), '
-    'you might set --cts-breaks 0.1,0.25,0.4x10,100,1000 ')
-parser.add_argument('--cts-names', default=None, type=str,
+    'you might set --cont-breaks 0.1,0.25,0.4x10,100,1000 ')
+parser.add_argument('--cont-names', default=None, type=str,
     help='Use this flag to specify names for the continuous variables cut into bins '
-    'with --cts-bin. The argument to this flag should be a comma-separated list of '
+    'with --cont-bin. The argument to this flag should be a comma-separated list of '
     'names. For example, if binning on DAF and distance to gene, you might set '
-    '--cts-bin DAF,DIST_TO_GENE ')
+    '--cont-names DAF,DIST_TO_GENE ')
+parser.add_argument('--cont-quantiles',default=None,type=int,
+    help='Use this flag to indicate the number of quantiles to split a continuous '
+    'variable into. For example, if binning the continous variable into quintiles, '
+    'you would set --cont-quantiles 5 ') 
 parser.add_argument('--per-allele', default=False, action='store_true',
     help='Setting this flag causes LDSC to compute per-allele LD Scores, '
     'i.e., \ell_j := \sum_k p_k(1-p_k)r^2_{jk}, where p_k denotes the MAF '
@@ -482,7 +504,7 @@ parser.add_argument('--pq-exp', default=None, type=float,
     'i.e., \ell_j := \sum_k (p_k(1-p_k))^a r^2_{jk}, where p_k denotes the MAF '
     'of SNP j and a is the argument to --pq-exp. ')
 parser.add_argument('--no-print-annot', default=False, action='store_true',
-    help='By defualt, seting --cts-bin or --cts-bin-add causes LDSC to print '
+    help='By defualt, seting --ccont-bin or --cont-bin-add causes LDSC to print '
     'the resulting annot matrix. Setting --no-print-annot tells LDSC not '
     'to print the annot matrix. ')
 parser.add_argument('--maf', default=None, type=float,
@@ -610,12 +632,12 @@ if __name__ == '__main__':
                 raise ValueError('Must specify --l2 with --bfile.')
             if args.annot is not None and args.extract is not None:
                 raise ValueError('--annot and --extract are currently incompatible.')
-            if args.cts_bin is not None and args.extract is not None:
-                raise ValueError('--cts-bin and --extract are currently incompatible.')
-            if args.annot is not None and args.cts_bin is not None:
-                raise ValueError('--annot and --cts-bin are currently incompatible.')
-            if (args.cts_bin is not None) != (args.cts_breaks is not None):
-                raise ValueError('Must set both or neither of --cts-bin and --cts-breaks.')
+            if args.cont_bin is not None and args.extract is not None:
+                raise ValueError('--cont-bin and --extract are currently incompatible.')
+            if args.annot is not None and args.cont_bin is not None:
+                raise ValueError('--annot and --cont-bin are currently incompatible.')
+            if (args.cont_bin is not None) != ((args.cont_breaks is not None) or (args.cont_quantiles is not None)):
+                raise ValueError('Must set both or neither of --cont-bin and --cont-breaks.')
             if args.per_allele and args.pq_exp is not None:
                 raise ValueError('Cannot set both --per-allele and --pq-exp (--per-allele is equivalent to --pq-exp 1).')
             if args.per_allele:

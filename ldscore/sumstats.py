@@ -49,8 +49,11 @@ FLIP_ALLELES = {''.join(x):
 
 
 def _splitp(fstr):
-    flist = fstr.split(',')
-    flist = [os.path.expanduser(os.path.expandvars(x)) for x in flist]
+    if ':' in fstr:
+        flist = fstr.split(':')
+    else:
+        flist = fstr.split(',')
+        flist = [os.path.expanduser(os.path.expandvars(x)) for x in flist]
     return flist
 
 
@@ -142,11 +145,10 @@ def _read_w_ld(args, log):
 
 def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc,args, **kwargs):
     '''Read files split across 22 chromosomes (annot, ref_ld, w_ld).'''
-    #import pdb; pdb.set_trace()
     try:
         if not_chr_arg:
             log.log('Reading {N} from {F} ...'.format(F=not_chr_arg, N=noun))
-            out = parsefunc(_splitp(not_chr_arg), **kwargs)
+            out = parsefunc(_splitp(not_chr_arg),args, **kwargs)
         elif chr_arg:
             f = ps.sub_chr(chr_arg, '[1-22]')
             log.log('Reading {N} from {F} ...'.format(F=f, N=noun))
@@ -285,16 +287,25 @@ def cell_type_specific(args, log):
     results_columns = ['Name', 'Coefficient', 'Coefficient_std_error', 'Coefficient_P_value']
     results_data = []
     for (name, ct_ld_chr) in [x.split() for x in open(args.ref_ld_chr_cts).readlines()]:
-        ref_ld_cts_allsnps = _read_chr_split_files(ct_ld_chr, None, log,
+	if args.ref_ld_chr_cts.endswith('.ldcts'):
+	    ref_ld_cts_allsnps = _read_chr_split_files(ct_ld_chr, None, log,
                                    'cts reference panel LD Score', ps.ldscore_fromlist,args)
-        log.log('Performing regression.')
-        ref_ld_cts = np.array(pd.merge(keep_snps, ref_ld_cts_allsnps, on='SNP', how='left').ix[:,1:])
-        if np.any(np.isnan(ref_ld_cts)):
+        else:
+	    ref_ld_cts_allsnps = _read_chr_split_files(ct_ld_chr, None, log,
+                                   'cts reference panel LD Score', ps.ldscore_fromfile,args)
+ 
+	log.log('Performing regression.')
+	ref_ld_cts = np.array(pd.merge(keep_snps, ref_ld_cts_allsnps, on='SNP', how='left').ix[:,1:])
+	if np.any(np.isnan(ref_ld_cts)):
             raise ValueError ('Missing some LD scores from cts files. Are you sure all SNPs in ref-ld-chr are also in ref-ld-chr-cts')
 
         ref_ld = np.hstack([ref_ld_cts, ref_ld_all_regr])
-        M_cts = ps.M_fromlist(
-                _splitp(ct_ld_chr), _N_CHR, common=(not args.not_M_5_50))
+        if args.ref_ld_chr_cts.endswith('.ldcts'):
+            M_cts = ps.M_fromlist(
+                    _splitp(ct_ld_chr), _N_CHR, common=(not args.not_M_5_50))
+        else:
+            M_cts = ps.M_fromfile(
+                    _splitp(ct_ld_chr), _N_CHR, common=(not args.not_M_5_50))
         M_annot = np.hstack([M_cts, M_annot_all_regr])
         hsqhat = reg.Hsq(s(chisq), ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
                      M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,

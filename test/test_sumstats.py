@@ -73,13 +73,13 @@ def test_read_annot():
     ref_ld_chr = None
     ref_ld = os.path.join(DIR, 'annot_test/test')
     overlap_matrix, M_tot = s._read_chr_split_files(ref_ld_chr, ref_ld, log, 'annot matrix',
-                                                    ps.annot, frqfile=None)
+                                                    ps.annot,args, frqfile=None)
     assert_array_equal(overlap_matrix, [[1, 0, 0], [0, 2, 2], [0, 2, 2]])
     assert_array_equal(M_tot, 3)
 
     frqfile = os.path.join(DIR, 'annot_test/test1')
     overlap_matrix, M_tot = s._read_chr_split_files(ref_ld_chr, ref_ld, log, 'annot matrix',
-                                                    ps.annot, frqfile=frqfile)
+                                                    ps.annot,args, frqfile=frqfile)
     assert_array_equal(overlap_matrix, [[1, 0, 0], [0, 1, 1], [0, 1, 1]])
     assert_array_equal(M_tot, 2)
 
