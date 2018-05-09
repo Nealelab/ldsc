@@ -150,9 +150,10 @@ def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc,args, **kwa
             log.log('Reading {N} from {F} ...'.format(F=not_chr_arg, N=noun))
             out = parsefunc(_splitp(not_chr_arg),args, **kwargs)
         elif chr_arg:
-            f = ps.sub_chr(chr_arg, '[1-22]')
+	    f = ps.sub_chr(chr_arg, '[1-22]')
             log.log('Reading {N} from {F} ...'.format(F=f, N=noun))
-            out = parsefunc(_splitp(chr_arg),args, _N_CHR, **kwargs)
+            
+	    out = parsefunc(_splitp(chr_arg),args, _N_CHR, **kwargs)
     except ValueError as e:
         log.log('Error parsing {N}.'.format(N=noun))
         raise e
@@ -310,9 +311,14 @@ def cell_type_specific(args, log):
         hsqhat = reg.Hsq(s(chisq), ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
                      M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
                      twostep=None, old_weights=True)
-        coef, coef_se = hsqhat.coef[0], hsqhat.coef_se[0]
+	coef, coef_se = hsqhat.coef[0], hsqhat.coef_se[0]
         results_data.append((name, coef, coef_se, stats.norm.sf(coef/coef_se)))
-        if args.print_all_cts:
+	if (args.print_all_cts and len(ref_ld_cts_allsnps)>1):
+	    names = list(ref_ld_cts_allsnps)
+	    for i in range(1, len(names)):
+	        coef , coef_se = hsqhat.coef[i], hsqhat.coef_se[i]
+		results_data.append((names[i],coef, coef_se, stats.norm.sf(coef/coef_se)))
+	elif (args.print_all_cts and len(ref_ld_cts)==1):
             for i in range(1, len(ct_ld_chr.split(','))):
                 coef, coef_se = hsqhat.coef[i], hsqhat.coef_se[i]
                 results_data.append((name+'_'+str(i), coef, coef_se, stats.norm.sf(coef/coef_se)))
