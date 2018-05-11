@@ -311,13 +311,13 @@ def cell_type_specific(args, log):
         hsqhat = reg.Hsq(s(chisq), ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
                      M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
                      twostep=None, old_weights=True)
-	if (args.print_all_cts and len(ref_ld_cts_allsnps)>1):
+	if (args.print_all_cts and len(ref_ld_cts_allsnps)!=len(x.split())):
             names = ref_ld_cts_allsnps.columns.tolist()
 	    names.remove('SNP')
             for i in xrange(len(names)):
                 coef , coef_se = hsqhat.coef[i], hsqhat.coef_se[i]
                 results_data.append((names[i],coef, coef_se, stats.norm.sf(coef/coef_se)))
-        elif (args.print_all_cts and len(ref_ld_cts)==1):
+        elif (args.print_all_cts and len(ref_ld_cts_allsnps)==len(x.split())):
             for i in range(1, len(ct_ld_chr.split(','))):
                 coef, coef_se = hsqhat.coef[i], hsqhat.coef_se[i]
                 results_data.append((name+'_'+str(i), coef, coef_se, stats.norm.sf(coef/coef_se)))	
